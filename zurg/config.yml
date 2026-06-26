@@ -1,0 +1,27 @@
+# Zurg configuration
+# Docs: https://github.com/debridmediamanager/zurg-testing
+
+# Your Real-Debrid API token
+token: YOUR_RD_API_KEY_HERE
+
+# Host and port Zurg listens on inside the container
+host: "[::]"
+port: 9999
+
+# How often to refresh torrent list from Real-Debrid (seconds)
+update_interval: 10
+
+# Ignore hashes that have been deleted from RD
+retain_folder_name_extension: true
+retain_rd_torrent_name: true
+
+# Network/performance
+concurrent_workers: 20
+check_for_changes_every_secs: 10
+
+# Expose these directories via WebDAV (/dav and /http)
+directories:
+  torrents:
+    group: media
+    filters:
+      - regex: ".*"

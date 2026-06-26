@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { height: 100%; }
+
+body {
+  font-family: "Exo 2", system-ui, sans-serif;
+  background-color: #07001a;
+  color: #d4c8f0;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Retro grid */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 0, 110, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 0, 110, 0.03) 1px, transparent 1px);
+  background-size: 44px 44px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Scanlines */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.055) 2px,
+    rgba(0, 0, 0, 0.055) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+#root {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: rgba(255, 0, 110, 0.4); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 0, 110, 0.7); }
+
+/* ── Selection ─────────────────────────────────────────────────────────────── */
+::selection { background: rgba(255, 0, 110, 0.3); color: #fff; }
+
+/* ── Typography ────────────────────────────────────────────────────────────── */
+.font-display { font-family: "Orbitron", system-ui, sans-serif !important; }
+
+.gradient-text {
+  background: linear-gradient(135deg, #ff006e 0%, #b14fff 50%, #00f5ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.neon-text-pink   { color: #ff006e; text-shadow: 0 0 8px rgba(255,0,110,0.8), 0 0 20px rgba(255,0,110,0.4); }
+.neon-text-cyan   { color: #00f5ff; text-shadow: 0 0 8px rgba(0,245,255,0.8), 0 0 20px rgba(0,245,255,0.4); }
+.neon-text-purple { color: #b14fff; text-shadow: 0 0 8px rgba(177,79,255,0.8), 0 0 20px rgba(177,79,255,0.4); }
+
+/* ── Glass ─────────────────────────────────────────────────────────────────── */
+.glass {
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+}
+
+/* ── Neon border ───────────────────────────────────────────────────────────── */
+.neon-border {
+  border: 1px solid rgba(255, 0, 110, 0.4);
+  box-shadow: 0 0 12px rgba(255, 0, 110, 0.12), inset 0 0 12px rgba(255, 0, 110, 0.03);
+}
+
+/* ── Gradient border ───────────────────────────────────────────────────────── */
+.grad-border {
+  position: relative;
+  background: #0d0025;
+  border-radius: 12px;
+}
+.grad-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255,0,110,0.6), rgba(177,79,255,0.4), rgba(0,245,255,0.5));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Neon divider ──────────────────────────────────────────────────────────── */
+.neon-hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,0,110,0.5), rgba(0,245,255,0.5), transparent);
+}
+
+/* ── Animations ────────────────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 0.25s ease-out; }
+
+@keyframes flicker {
+  0%,100% { opacity: 1; }
+  92%     { opacity: 1; }
+  93%     { opacity: 0.75; }
+  94%     { opacity: 1; }
+  96%     { opacity: 0.85; }
+  97%     { opacity: 1; }
+}
+.animate-flicker { animation: flicker 5s ease-in-out infinite; }

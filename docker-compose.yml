@@ -1,0 +1,365 @@
+version: "3.8"
+
+# ─────────────────────────────────────────────────────────────
+#  Automatarr — docker-compose
+#
+#  Core (always runs):
+#    docker-compose up -d
+#
+#  Profiles — mix and match with --profile <name>:
+#
+#   Media stack:
+#    --profile zurg        Zurg + rclone mount  (symlink mode)
+#    --profile plex        Plex Media Server
+#    --profile jellyfin    Jellyfin
+#
+#   Indexers:
+#    --profile zilean      Zilean (self-hosted DMM indexer)
+#
+#   *Arr apps (each independent, or use --profile arrs for all):
+#    --profile radarr      Radarr  (movies)
+#    --profile sonarr      Sonarr  (TV shows)
+#    --profile prowlarr    Prowlarr (indexer manager)
+#    --profile lidarr      Lidarr  (music)
+#    --profile readarr     Readarr (books)
+#    --profile bazarr      Bazarr  (subtitles)
+#    --profile overseerr   Overseerr (requests)
+#    --profile whisparr    Whisparr (adult content)
+#    --profile arrs        All arr apps at once
+#
+#  Full example:
+#    docker-compose --profile zurg --profile jellyfin \
+#                   --profile zilean --profile arrs up -d
+# ─────────────────────────────────────────────────────────────
+
+services:
+
+  # ═══════════════════════════════════════════════════════════
+  #  CORE
+  # ═══════════════════════════════════════════════════════════
+  backend:
+    build: ./backend
+    container_name: automatarr-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ${MOVIES_PATH:-/media/movies}:/media/movies
+      - ${SHOWS_PATH:-/media/shows}:/media/shows
+      - zurg-mount:/mnt/zurg:ro,slave
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./data/automatarr.db
+      - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
+    networks:
+      - automatarr
+
+  frontend:
+    build: ./frontend
+    container_name: automatarr-frontend
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:80"
+    depends_on:
+      - backend
+    networks:
+      - automatarr
+
+  # ═══════════════════════════════════════════════════════════
+  #  ZURG + RCLONE  (--profile zurg)
+  # ═══════════════════════════════════════════════════════════
+  zurg:
+    image: ghcr.io/debridmediamanager/zurg-testing:latest
+    container_name: zurg
+    restart: unless-stopped
+    profiles: [zurg]
+    ports:
+      - "${ZURG_PORT:-9999}:9999"
+    volumes:
+      - ./zurg/config.yml:/app/config.yml:ro
+      - zurg-data:/app/data
+    networks:
+      - automatarr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9999/dav"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rclone:
+    image: rclone/rclone:latest
+    container_name: rclone-zurg
+    restart: unless-stopped
+    profiles: [zurg]
+    command: >
+      mount zurg: /mnt/zurg
+      --config /config/rclone/rclone.conf
+      --allow-other
+      --allow-non-empty
+      --uid=${PUID:-1000}
+      --gid=${PGID:-1000}
+      --cache-dir /cache
+      --vfs-cache-mode full
+      --vfs-cache-max-size ${RCLONE_CACHE_SIZE:-10G}
+      --vfs-read-chunk-size 8M
+      --buffer-size 16M
+      --dir-cache-time 1000h
+      --poll-interval 15s
+    volumes:
+      - ./rclone/rclone.conf:/config/rclone/rclone.conf:ro
+      - zurg-mount:/mnt/zurg:shared
+      - rclone-cache:/cache
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    networks:
+      - automatarr
+    depends_on:
+      zurg:
+        condition: service_healthy
+
+  # ═══════════════════════════════════════════════════════════
+  #  PLEX  (--profile plex)
+  # ═══════════════════════════════════════════════════════════
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    profiles: [plex]
+    network_mode: host
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      - VERSION=docker
+      - PLEX_CLAIM=${PLEX_CLAIM:-}
+    volumes:
+      - plex-config:/config
+      - ${MOVIES_PATH:-/media/movies}:/movies:ro
+      - ${SHOWS_PATH:-/media/shows}:/shows:ro
+      - zurg-mount:/mnt/zurg:ro,slave
+
+  # ═══════════════════════════════════════════════════════════
+  #  JELLYFIN  (--profile jellyfin)
+  # ═══════════════════════════════════════════════════════════
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    profiles: [jellyfin]
+    ports:
+      - "${JELLYFIN_PORT:-8096}:8096"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - jellyfin-config:/config
+      - jellyfin-cache:/cache
+      - ${MOVIES_PATH:-/media/movies}:/data/movies:ro
+      - ${SHOWS_PATH:-/media/shows}:/data/shows:ro
+      - zurg-mount:/mnt/zurg:ro,slave
+    networks:
+      - automatarr
+
+  # ═══════════════════════════════════════════════════════════
+  #  ZILEAN  (--profile zilean)
+  # ═══════════════════════════════════════════════════════════
+  zilean:
+    image: ipromknight/zilean:latest
+    container_name: zilean
+    restart: unless-stopped
+    profiles: [zilean]
+    ports:
+      - "${ZILEAN_PORT:-8182}:8182"
+    volumes:
+      - zilean-data:/app/data
+    environment:
+      - Zilean__Database__ConnectionString=Data Source=/app/data/zilean.db
+      - Zilean__Imdb__EnableImportMatching=true
+      - Zilean__Imdb__EnableEndpoint=true
+    networks:
+      - automatarr
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8182/healthchecks/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ═══════════════════════════════════════════════════════════
+  #  ARR APPS
+  # ═══════════════════════════════════════════════════════════
+
+  # ── Radarr  (--profile radarr | --profile arrs) ────────────
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    profiles: [radarr, arrs]
+    ports:
+      - "${RADARR_PORT:-7878}:7878"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - radarr-config:/config
+      - ${MOVIES_PATH:-/media/movies}:/movies
+      - ${DOWNLOADS_PATH:-/media/downloads}:/downloads
+      - zurg-mount:/mnt/zurg:ro,slave
+    networks:
+      - automatarr
+
+  # ── Sonarr  (--profile sonarr | --profile arrs) ────────────
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    profiles: [sonarr, arrs]
+    ports:
+      - "${SONARR_PORT:-8989}:8989"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - sonarr-config:/config
+      - ${SHOWS_PATH:-/media/shows}:/tv
+      - ${DOWNLOADS_PATH:-/media/downloads}:/downloads
+      - zurg-mount:/mnt/zurg:ro,slave
+    networks:
+      - automatarr
+
+  # ── Prowlarr  (--profile prowlarr | --profile arrs) ────────
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    profiles: [prowlarr, arrs]
+    ports:
+      - "${PROWLARR_PORT:-9696}:9696"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - prowlarr-config:/config
+    networks:
+      - automatarr
+
+  # ── Lidarr  (--profile lidarr | --profile arrs) ────────────
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: unless-stopped
+    profiles: [lidarr, arrs]
+    ports:
+      - "${LIDARR_PORT:-8686}:8686"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - lidarr-config:/config
+      - ${MUSIC_PATH:-/media/music}:/music
+      - ${DOWNLOADS_PATH:-/media/downloads}:/downloads
+    networks:
+      - automatarr
+
+  # ── Readarr  (--profile readarr | --profile arrs) ──────────
+  readarr:
+    image: lscr.io/linuxserver/readarr:develop
+    container_name: readarr
+    restart: unless-stopped
+    profiles: [readarr, arrs]
+    ports:
+      - "${READARR_PORT:-8787}:8787"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - readarr-config:/config
+      - ${BOOKS_PATH:-/media/books}:/books
+      - ${DOWNLOADS_PATH:-/media/downloads}:/downloads
+    networks:
+      - automatarr
+
+  # ── Bazarr  (--profile bazarr | --profile arrs) ────────────
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    profiles: [bazarr, arrs]
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - bazarr-config:/config
+      - ${MOVIES_PATH:-/media/movies}:/movies:ro
+      - ${SHOWS_PATH:-/media/shows}:/tv:ro
+    networks:
+      - automatarr
+
+  # ── Overseerr  (--profile overseerr | --profile arrs) ──────
+  overseerr:
+    image: sctx/overseerr:latest
+    container_name: overseerr
+    restart: unless-stopped
+    profiles: [overseerr, arrs]
+    ports:
+      - "${OVERSEERR_PORT:-5055}:5055"
+    environment:
+      - LOG_LEVEL=debug
+      - TZ=${TZ:-UTC}
+    volumes:
+      - overseerr-config:/app/config
+    networks:
+      - automatarr
+
+  # ── Whisparr  (--profile whisparr | --profile arrs) ────────
+  whisparr:
+    image: hotio/whisparr:nightly
+    container_name: whisparr
+    restart: unless-stopped
+    profiles: [whisparr, arrs]
+    ports:
+      - "${WHISPARR_PORT:-6969}:6969"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-UTC}
+      - UMASK=002
+    volumes:
+      - whisparr-config:/config
+      - ${DOWNLOADS_PATH:-/media/downloads}:/downloads
+    networks:
+      - automatarr
+
+# ─────────────────────────────────────────────────────────────
+volumes:
+  zurg-data:
+  zurg-mount:
+  rclone-cache:
+  plex-config:
+  jellyfin-config:
+  jellyfin-cache:
+  zilean-data:
+  radarr-config:
+  sonarr-config:
+  prowlarr-config:
+  lidarr-config:
+  readarr-config:
+  bazarr-config:
+  overseerr-config:
+  whisparr-config:
+
+networks:
+  automatarr:
+    driver: bridge
