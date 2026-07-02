@@ -1,5 +1,8 @@
 import httpx
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 async def send_discord(webhook_url: str, title: str, message: str, color: int = 0x6c63ff):
@@ -15,8 +18,8 @@ async def send_discord(webhook_url: str, title: str, message: str, color: int = 
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             await client.post(webhook_url, json=payload)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Discord notification failed: %s", e)
 
 
 async def send_telegram(bot_token: str, chat_id: str, message: str):
@@ -26,8 +29,8 @@ async def send_telegram(bot_token: str, chat_id: str, message: str):
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             await client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Telegram notification failed: %s", e)
 
 
 async def send_webhook(webhook_url: str, payload: dict):
@@ -36,8 +39,8 @@ async def send_webhook(webhook_url: str, payload: dict):
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             await client.post(webhook_url, json=payload)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Webhook notification failed: %s", e)
 
 
 async def notify(
@@ -53,7 +56,7 @@ async def notify(
         "error": "notify_on_error",
     }
     setting_key = notify_map.get(event, "notify_on_download")
-    if settings.get(setting_key, "true") != "true":
+    if settings.get(setting_key) != "true":
         return
 
     colors = {"grab": 0xf59e0b, "download": 0x10b981, "error": 0xef4444}

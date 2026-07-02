@@ -11,12 +11,15 @@ import { QualityBadge } from "../components/ui/Badge";
 import type { Show } from "../types";
 import toast from "react-hot-toast";
 
+type MonitorFilter = "all" | "monitored" | "unmonitored";
+
 export function Shows() {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [detailShow, setDetailShow] = useState<Show | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [monitorFilter, setMonitorFilter] = useState<MonitorFilter>("all");
 
   const { data: shows = [], isLoading } = useQuery({
     queryKey: ["shows"],
@@ -44,9 +47,9 @@ export function Shows() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shows"] }),
   });
 
-  const filtered = shows.filter(
-    (s) => !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = shows
+    .filter((s) => monitorFilter === "all" || (monitorFilter === "monitored" ? s.monitor : !s.monitor))
+    .filter((s) => !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase()));
 
   if (isLoading) return <PageSpinner />;
 
@@ -63,7 +66,8 @@ export function Shows() {
         </Button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2" style={{ width: 13, height: 13, color: "rgba(0,245,255,0.4)" }} />
           <input
@@ -74,6 +78,28 @@ export function Shows() {
             style={{ fontSize: 12, background: "rgba(0,245,255,0.04)", border: "1px solid rgba(0,245,255,0.2)", color: "#d4c8f0" }}
           />
         </div>
+
+        {/* Monitor filter pills */}
+        <div className="flex gap-1.5">
+          {(["all", "monitored", "unmonitored"] as MonitorFilter[]).map((f) => {
+            const active = monitorFilter === f;
+            const color = f === "monitored" ? "#00f5ff" : f === "unmonitored" ? "#64748b" : "#94a3b8";
+            return (
+              <button
+                key={f}
+                onClick={() => setMonitorFilter(f)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all duration-150"
+                style={active
+                  ? { color, background: `${color}18`, border: `1px solid ${color}33` }
+                  : { color: "#475569", background: "transparent", border: "1px solid rgba(255,255,255,0.05)" }}
+              >
+                {f}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* View toggle */}
         <div className="ml-auto flex gap-1 p-1 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
           {([["grid", LayoutGrid], ["list", List]] as const).map(([v, Icon]) => (
             <button key={v} onClick={() => setView(v)} className="p-1.5 rounded-md transition-all"
@@ -119,8 +145,17 @@ export function Shows() {
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate" style={{ color: "#d4c8f0" }}>{show.title}</p>
-                <p className="font-mono mt-0.5" style={{ fontSize: 10, color: "rgba(212,200,240,0.35)" }}>{show.year} · {show.total_seasons} seasons</p>
+                <p className="font-mono mt-0.5" style={{ fontSize: 10, color: "rgba(212,200,240,0.35)" }}>
+                  {show.year}
+                  {show.total_seasons != null ? ` · ${show.total_seasons} seasons` : ""}
+                  {show.total_episodes != null ? ` · ${show.total_episodes} eps` : ""}
+                </p>
               </div>
+              {!show.monitor && (
+                <span className="font-mono text-[9px] px-1.5 py-0.5 rounded" style={{ color: "#64748b", background: "rgba(100,116,139,0.1)", border: "1px solid rgba(100,116,139,0.2)" }}>
+                  UNMONITORED
+                </span>
+              )}
               <QualityBadge quality={show.quality_profile} />
             </div>
           ))}

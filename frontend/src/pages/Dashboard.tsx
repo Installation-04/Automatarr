@@ -1,11 +1,12 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Film, Tv, ArrowDownToLine, Sparkles, Search, RefreshCw } from "lucide-react";
+import { Film, Tv, ArrowDownToLine, Sparkles, Search, RefreshCw, ExternalLink } from "lucide-react";
 import { getDashboard, triggerSearchAll } from "../api";
 import { PageSpinner } from "../components/ui/Spinner";
 import { StatusBadge } from "../components/ui/Badge";
 import type { DashboardData } from "../types";
 import toast from "react-hot-toast";
 import { format } from "date-fns";
+import { Link } from "react-router-dom";
 
 const TMDB_IMG = "https://image.tmdb.org/t/p/w92";
 
@@ -38,12 +39,13 @@ export function Dashboard() {
 
   const { movies, shows, recent_activity, upcoming } = data;
 
-  const statValues: Record<string, { value: number; sub: string }> = {
-    movies:      { value: movies.total,                                    sub: `${movies.downloaded} downloaded` },
-    shows:       { value: shows.total,                                     sub: `${shows.episodes_downloaded} eps` },
+  const statValues: Record<string, { value: number; sub: string; sub2?: string }> = {
+    movies:      { value: movies.total,      sub: `${movies.downloaded} / ${movies.total} downloaded`,               sub2: movies.total > 0 ? `${Math.round((movies.downloaded / movies.total) * 100)}%` : undefined },
+    shows:       { value: shows.total,       sub: `${shows.episodes_downloaded} / ${shows.episodes_total} episodes`,  sub2: shows.episodes_total > 0 ? `${Math.round((shows.episodes_downloaded / shows.episodes_total) * 100)}%` : undefined },
     downloading: { value: movies.downloading + shows.episodes_downloading, sub: "active now" },
     wanted:      { value: movies.wanted + shows.episodes_wanted,           sub: "awaiting grab" },
   };
+  const hasActiveDownloads = (movies.downloading + shows.episodes_downloading) > 0;
 
   return (
     <div className="p-7 max-w-6xl mx-auto space-y-8 animate-fade-in">
@@ -95,7 +97,8 @@ export function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {STAT_CARDS.map((card) => {
           const Icon = card.icon;
-          const { value, sub } = statValues[card.key];
+          const { value, sub, sub2 } = statValues[card.key];
+          const isPulsing = card.key === "downloading" && hasActiveDownloads;
           return (
             <div
               key={card.key}
@@ -103,13 +106,14 @@ export function Dashboard() {
               style={{
                 borderRadius: 10,
                 background: `linear-gradient(135deg, rgba(${hexRgb(card.color)},0.1) 0%, rgba(${hexRgb(card.color)},0.03) 100%)`,
-                border: `1px solid rgba(${hexRgb(card.color)},0.3)`,
-                boxShadow: `0 0 20px rgba(${hexRgb(card.color)},0.15)`,
+                border: `1px solid rgba(${hexRgb(card.color)},${isPulsing ? "0.6" : "0.3"})`,
+                boxShadow: `0 0 ${isPulsing ? "32px" : "20px"} rgba(${hexRgb(card.color)},${isPulsing ? "0.3" : "0.15"})`,
+                transition: "border-color 0.5s, box-shadow 0.5s",
               }}
             >
               {/* Ghost icon */}
               <Icon
-                className="absolute -right-2 -bottom-2"
+                className={`absolute -right-2 -bottom-2${isPulsing ? " animate-pulse-glow" : ""}`}
                 style={{ width: 72, height: 72, color: card.color, opacity: 0.07 }}
                 strokeWidth={1}
               />
@@ -122,7 +126,7 @@ export function Dashboard() {
               </div>
               {/* Value */}
               <p
-                className="font-display font-bold"
+                className={`font-display font-bold${isPulsing ? " animate-pulse-glow" : ""}`}
                 style={{ fontSize: 36, color: card.color, textShadow: `0 0 16px ${card.glow}, 0 0 32px rgba(${hexRgb(card.color)},0.2)`, lineHeight: 1 }}
               >
                 {value}
@@ -131,6 +135,9 @@ export function Dashboard() {
                 {card.label}
               </p>
               <p className="font-mono mt-0.5" style={{ fontSize: 9, color: "rgba(212,200,240,0.35)", letterSpacing: "0.05em" }}>{sub}</p>
+              {sub2 && (
+                <p className="font-mono font-bold mt-0.5" style={{ fontSize: 10, color: card.color, opacity: 0.7 }}>{sub2} complete</p>
+              )}
             </div>
           );
         })}
@@ -140,7 +147,15 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Upcoming */}
         <section>
-          <SectionHeader title="UPCOMING" sub="next 14 days" color="#00f5ff" />
+          <div className="flex items-center justify-between mb-3">
+            <SectionHeader title="UPCOMING" sub="next 14 days" color="#00f5ff" noMargin />
+            <Link to="/calendar" className="flex items-center gap-1 font-mono transition-colors"
+              style={{ fontSize: 9, color: "rgba(0,245,255,0.4)", letterSpacing: "0.1em" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "#00f5ff"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(0,245,255,0.4)"; }}>
+              VIEW ALL <ExternalLink style={{ width: 9, height: 9, marginLeft: 2 }} />
+            </Link>
+          </div>
           <div
             className="rounded-xl overflow-hidden"
             style={{ background: "#0d0025", border: "1px solid rgba(0,245,255,0.15)", boxShadow: "0 0 20px rgba(0,245,255,0.04)" }}
@@ -216,9 +231,9 @@ export function Dashboard() {
   );
 }
 
-function SectionHeader({ title, sub, color }: { title: string; sub: string; color: string }) {
+function SectionHeader({ title, sub, color, noMargin }: { title: string; sub: string; color: string; noMargin?: boolean }) {
   return (
-    <div className="flex items-center gap-3 mb-3">
+    <div className={`flex items-center gap-3${noMargin ? "" : " mb-3"}`}>
       <h2
         className="font-display font-bold"
         style={{ fontSize: 11, letterSpacing: "0.2em", color, textShadow: `0 0 10px ${color}` }}

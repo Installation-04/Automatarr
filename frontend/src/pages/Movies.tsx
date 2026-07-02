@@ -32,7 +32,10 @@ export function Movies() {
   const { data: movies = [], isLoading } = useQuery({
     queryKey: ["movies"],
     queryFn: getMovies,
-    refetchInterval: 15000,
+    refetchInterval: (query: any) => {
+      const data = query.state.data as Movie[] | undefined;
+      return data?.some((m: Movie) => m.status === "downloading" || m.status === "searching") ? 5000 : 15000;
+    },
   });
 
   const deleteMut  = useMutation({ mutationFn: deleteMovie,  onSuccess: () => { qc.invalidateQueries({ queryKey: ["movies"] }); toast.success("Removed"); } });
@@ -151,6 +154,11 @@ export function Movies() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold truncate" style={{ color: "#d4c8f0" }}>{movie.title}</p>
                 <p className="font-mono mt-0.5" style={{ fontSize: 10, color: "rgba(212,200,240,0.35)" }}>{movie.year}</p>
+                {movie.status === "error" && movie.last_error && (
+                  <p className="font-mono mt-0.5 truncate" style={{ fontSize: 9, color: "#f87171", letterSpacing: "0.04em" }} title={movie.last_error}>
+                    {movie.last_error}
+                  </p>
+                )}
               </div>
               <StatusBadge status={movie.status} />
               <QualityBadge quality={movie.quality_profile} />

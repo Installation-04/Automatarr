@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, BackgroundTasks, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import date
+import ipaddress
+import urllib.parse
 import httpx
 
 from app.database import get_db
@@ -19,11 +21,47 @@ async def health():
     return {"status": "ok", "version": "1.0.0"}
 
 
+_ALLOWED_SCHEMES = {"http", "https"}
+# Ranges that must never be probed (loopback, link-local/cloud-metadata, unspecified)
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),  # AWS/GCP metadata, link-local
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fe80::/10"),
+]
+
+
+def _is_safe_probe_url(url: str) -> bool:
+    """Allow http/https to any host except loopback / cloud-metadata ranges."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in _ALLOWED_SCHEMES:
+            return False
+        host = parsed.hostname or ""
+        if not host:
+            return False
+        # Block "localhost" by name
+        if host.lower() == "localhost":
+            return False
+        # If the host is a bare IP, check it against blocked ranges
+        try:
+            addr = ipaddress.ip_address(host)
+            if any(addr in net for net in _BLOCKED_NETWORKS):
+                return False
+        except ValueError:
+            pass  # It's a hostname (e.g. a Docker service name) — allow it
+        return True
+    except Exception:
+        return False
+
+
 @router.get("/probe")
 async def probe(url: str = Query(...)):
     """Used by the onboarding wizard to check if a service URL is reachable."""
+    if not _is_safe_probe_url(url):
+        raise HTTPException(400, "Invalid or disallowed URL")
     try:
-        async with httpx.AsyncClient(timeout=3.0) as c:
+        async with httpx.AsyncClient(timeout=3.0, follow_redirects=False) as c:
             r = await c.get(url)
             return {"ok": True, "status": r.status_code}
     except Exception as e:
@@ -73,6 +111,7 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
     upcoming = []
     for ep, show in upcoming_result.all():
         upcoming.append({
+            "show_id": show.id,
             "show_title": show.title,
             "show_poster": show.poster_path,
             "season_number": ep.season_number,

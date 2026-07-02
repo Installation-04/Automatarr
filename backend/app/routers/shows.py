@@ -1,9 +1,12 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
 from typing import Optional
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.show import Show, Season, Episode
@@ -78,7 +81,8 @@ async def add_show(req: AddShowRequest, background_tasks: BackgroundTasks, db: A
 
         try:
             season_detail = await tmdb.get_season(req.tmdb_id, s_num)
-        except Exception:
+        except Exception as e:
+            logger.warning("Could not fetch season %d for tmdb_id %d: %s", s_num, req.tmdb_id, e)
             season_detail = {}
 
         for ep_data in season_detail.get("episodes", []):
@@ -159,13 +163,18 @@ async def delete_show(show_id: int, db: AsyncSession = Depends(get_db)):
 @router.post("/{show_id}/search")
 async def search_show(show_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     show = await _get_or_404(db, show_id)
-    # Mark all missing monitored episodes as wanted
+    # Mark all missing/errored monitored episodes as wanted and clear stale errors
     result = await db.execute(
-        select(Episode).where(Episode.show_id == show_id, Episode.status == "missing", Episode.monitor == True)
+        select(Episode).where(
+            Episode.show_id == show_id,
+            Episode.status.in_(["missing", "error"]),
+            Episode.monitor == True,
+        )
     )
     episodes = result.scalars().all()
     for ep in episodes:
         ep.status = "wanted"
+        ep.last_error = None
     await db.commit()
     background_tasks.add_task(_grab_wanted_episodes, show_id)
     return {"ok": True, "message": f"Search queued for {len(episodes)} episodes"}
@@ -224,8 +233,8 @@ async def _grab_wanted_episodes(show_id: int):
         for ep in episodes:
             try:
                 await grabber.grab_episode(db, ep, show)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Error grabbing episode %d for show %d: %s", ep.id, show_id, e)
 
 
 def _show_out(s: Show) -> dict:
@@ -257,5 +266,6 @@ def _episode_out(e: Episode) -> dict:
         "air_date": e.air_date, "runtime": e.runtime, "rating": e.rating,
         "status": e.status, "monitor": e.monitor, "quality_profile": e.quality_profile,
         "symlink_path": e.symlink_path, "last_error": e.last_error,
+        "search_attempts": e.search_attempts,
         "downloaded_at": e.downloaded_at.isoformat() if e.downloaded_at else None,
     }
