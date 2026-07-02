@@ -1,5 +1,8 @@
 import httpx
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ZileanClient:
@@ -29,9 +32,11 @@ class ZileanClient:
             try:
                 r = await client.get(f"{self.base_url}/search/torrents", params=params)
                 if r.status_code != 200:
+                    logger.warning("Zilean search returned HTTP %d", r.status_code)
                     return []
                 return r.json()
-            except Exception:
+            except Exception as e:
+                logger.warning("Zilean search failed: %s", e)
                 return []
 
     async def ping(self) -> bool:

@@ -84,6 +84,7 @@ export interface Episode {
   quality_profile: QualityProfile;
   symlink_path: string | null;
   last_error: string | null;
+  search_attempts: number;
   downloaded_at: string | null;
 }
 

@@ -105,6 +105,7 @@ async def delete_movie(movie_id: int, db: AsyncSession = Depends(get_db)):
 async def search_movie(movie_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     movie = await _get_or_404(db, movie_id)
     movie.status = "wanted"
+    movie.last_error = None
     await db.commit()
     background_tasks.add_task(_grab_movie_task, movie_id)
     return {"ok": True, "message": "Search queued"}

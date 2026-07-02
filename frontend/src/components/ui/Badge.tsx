@@ -1,13 +1,16 @@
 import type { MediaStatus } from "../../types";
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  downloaded:  { label: "DOWNLOADED",  color: "#00ff88", bg: "rgba(0,255,136,0.1)"  },
-  available:   { label: "AVAILABLE",   color: "#00f5ff", bg: "rgba(0,245,255,0.1)"  },
-  searching:   { label: "SEARCHING",   color: "#ffe600", bg: "rgba(255,230,0,0.1)"  },
-  grabbed:     { label: "GRABBED",     color: "#ff7700", bg: "rgba(255,119,0,0.1)"  },
-  missing:     { label: "MISSING",     color: "#ff006e", bg: "rgba(255,0,110,0.1)"  },
-  wanted:      { label: "WANTED",      color: "#b14fff", bg: "rgba(177,79,255,0.1)" },
-  monitored:   { label: "MONITORED",   color: "#00f5ff", bg: "rgba(0,245,255,0.1)"  },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; pulse?: boolean }> = {
+  downloaded:  { label: "DOWNLOADED",  color: "#00ff88", bg: "rgba(0,255,136,0.1)"   },
+  available:   { label: "AVAILABLE",   color: "#00f5ff", bg: "rgba(0,245,255,0.1)"   },
+  searching:   { label: "SEARCHING",   color: "#ffe600", bg: "rgba(255,230,0,0.1)",   pulse: true },
+  downloading: { label: "DOWNLOADING", color: "#a78bfa", bg: "rgba(167,139,250,0.12)", pulse: true },
+  grabbed:     { label: "GRABBED",     color: "#ff7700", bg: "rgba(255,119,0,0.1)"   },
+  missing:     { label: "MISSING",     color: "#ff006e", bg: "rgba(255,0,110,0.1)"   },
+  wanted:      { label: "WANTED",      color: "#b14fff", bg: "rgba(177,79,255,0.1)"  },
+  error:       { label: "ERROR",       color: "#f87171", bg: "rgba(248,113,113,0.12)" },
+  ignored:     { label: "IGNORED",     color: "rgba(212,200,240,0.3)", bg: "rgba(212,200,240,0.05)" },
+  monitored:   { label: "MONITORED",   color: "#00f5ff", bg: "rgba(0,245,255,0.1)"   },
   unmonitored: { label: "UNMONITORED", color: "rgba(212,200,240,0.3)", bg: "rgba(212,200,240,0.05)" },
 };
 
@@ -39,6 +42,7 @@ export function StatusBadge({ status }: { status: MediaStatus | string }) {
       }}
     >
       <span
+        className={cfg.pulse ? "animate-pulse-glow" : ""}
         style={{
           width: 4,
           height: 4,

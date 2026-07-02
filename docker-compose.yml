@@ -53,6 +53,12 @@ services:
       - SECRET_KEY=${SECRET_KEY:-changeme-in-production}
     networks:
       - automatarr
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/system/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build: ./frontend
@@ -61,7 +67,8 @@ services:
     ports:
       - "${PORT:-3000}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - automatarr
 
@@ -110,11 +117,11 @@ services:
       - zurg-mount:/mnt/zurg:shared
       - rclone-cache:/cache
     devices:
-      - /dev/fuse:/dev/fuse
+      - /dev/fuse:/dev/fuse   # requires fuse3 package on Debian (install.sh handles this)
     cap_add:
-      - SYS_ADMIN
+      - SYS_ADMIN             # required for FUSE mounts inside a container
     security_opt:
-      - apparmor:unconfined
+      - apparmor:unconfined   # Debian Bookworm/Trixie enforces AppArmor; this allows the FUSE mount
     networks:
       - automatarr
     depends_on:

@@ -91,5 +91,5 @@ async def refresh_media_server(settings: dict, path: Optional[str] = None, media
         url = settings.get("jellyfin_url" if server == "jellyfin" else "emby_url", "")
         key = settings.get("jellyfin_api_key" if server == "jellyfin" else "emby_api_key", "")
         if url and key:
-            client = JellyfinClient(url, key)
+            client = EmbyClient(url, key) if server == "emby" else JellyfinClient(url, key)
             await client.refresh_library()

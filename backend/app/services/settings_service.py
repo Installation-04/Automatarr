@@ -130,6 +130,7 @@ async def get_setting(db: AsyncSession, key: str) -> Optional[str]:
 
 
 async def set_setting(db: AsyncSession, key: str, value: str):
+    """Upsert a single setting. Does NOT commit — caller is responsible."""
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
     if setting:
@@ -137,6 +138,19 @@ async def set_setting(db: AsyncSession, key: str, value: str):
     else:
         setting = Setting(key=key, value=value)
         db.add(setting)
+
+
+async def bulk_set_settings(db: AsyncSession, updates: dict):
+    """Upsert multiple settings in a single transaction."""
+    if not updates:
+        return
+    result = await db.execute(select(Setting).where(Setting.key.in_(updates.keys())))
+    existing = {row.key: row for row in result.scalars().all()}
+    for key, value in updates.items():
+        if key in existing:
+            existing[key].value = value
+        else:
+            db.add(Setting(key=key, value=value))
     await db.commit()
 
 
