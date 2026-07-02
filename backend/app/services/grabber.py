@@ -72,7 +72,15 @@ async def grab_movie(db: AsyncSession, movie: Movie):
     movie.search_attempts = (movie.search_attempts or 0) + 1
     await db.commit()
 
-    streams = await _get_streams(settings, imdb_id, "movie", title=movie.title, year=movie.year)
+    try:
+        streams = await _get_streams(settings, imdb_id, "movie", title=movie.title, year=movie.year)
+    except Exception as e:
+        movie.status = "wanted"
+        movie.last_error = f"Indexer error: {e}"
+        await db.commit()
+        await _log(db, "error", "movie", movie.title, f"Stream fetch failed: {e}")
+        return
+
     if not streams:
         movie.status = "wanted"
         movie.last_error = "No streams found"
@@ -81,7 +89,7 @@ async def grab_movie(db: AsyncSession, movie: Movie):
         return
 
     torrentio = TorrentioClient()
-    stream = torrentio.pick_best_stream(streams, movie.quality_profile or "1080p")
+    stream = torrentio.pick_best_stream(streams, movie.quality_profile or settings.get("default_quality", "1080p"))
     if not stream:
         movie.status = "wanted"
         movie.last_error = "No matching stream for quality profile"
@@ -171,17 +179,31 @@ async def _finalize_movie(db: AsyncSession, movie: Movie, rd: RealDebridClient, 
             movie.status = "error"
             movie.last_error = "No video file found in torrent"
             await db.commit()
+            await _log(db, "error", "movie", movie.title, "No video file found in torrent")
     else:
         # Direct download via RD link
         links = torrent_info.get("links", [])
-        if links:
-            unrestricted = await rd.unrestrict_link(links[0])
-            download_url = unrestricted.get("download", "")
-            movie.file_path = download_url
-            movie.status = "downloaded"
-            movie.downloaded_at = datetime.now(timezone.utc)
+        if not links:
+            movie.status = "error"
+            movie.last_error = "No download links returned by Real-Debrid"
             await db.commit()
-            await notifications.notify(settings, "download", movie.title, "Download link ready")
+            await _log(db, "error", "movie", movie.title, "No download links from RD")
+            return
+        try:
+            unrestricted = await rd.unrestrict_link(links[0])
+        except RealDebridError as e:
+            movie.status = "error"
+            movie.last_error = str(e)
+            await db.commit()
+            await _log(db, "error", "movie", movie.title, f"Unrestrict failed: {e}")
+            return
+        download_url = unrestricted.get("download", "")
+        movie.file_path = download_url
+        movie.status = "downloaded"
+        movie.downloaded_at = datetime.now(timezone.utc)
+        await db.commit()
+        await _log(db, "download", "movie", movie.title, "Download link ready")
+        await notifications.notify(settings, "download", movie.title, "Download link ready")
 
 
 async def grab_episode(db: AsyncSession, episode: Episode, show: Show):
@@ -202,11 +224,19 @@ async def grab_episode(db: AsyncSession, episode: Episode, show: Show):
     episode.search_attempts = (episode.search_attempts or 0) + 1
     await db.commit()
 
-    streams = await _get_streams(
-        settings, imdb_id, "show",
-        title=show.title, year=show.year,
-        season=episode.season_number, episode=episode.episode_number,
-    )
+    try:
+        streams = await _get_streams(
+            settings, imdb_id, "show",
+            title=show.title, year=show.year,
+            season=episode.season_number, episode=episode.episode_number,
+        )
+    except Exception as e:
+        episode.status = "wanted"
+        episode.last_error = f"Indexer error: {e}"
+        await db.commit()
+        await _log(db, "error", "episode", title_tag, f"Stream fetch failed: {e}")
+        return
+
     if not streams:
         episode.status = "wanted"
         episode.last_error = "No streams found"
@@ -288,6 +318,7 @@ async def _finalize_episode(
             episode.status = "error"
             episode.last_error = f"Could not find '{torrent_name}' in mount"
             await db.commit()
+            await _log(db, "error", "episode", title_tag, f"Could not find '{torrent_name}' in mount at {mount_path}")
             return
 
         link = sym.create_episode_symlink(
@@ -312,14 +343,50 @@ async def _finalize_episode(
             episode.status = "error"
             episode.last_error = "No video file found in torrent"
             await db.commit()
+            await _log(db, "error", "episode", title_tag, "No video file found in torrent")
     else:
         links = torrent_info.get("links", [])
-        if links:
-            unrestricted = await rd.unrestrict_link(links[0])
-            episode.file_path = unrestricted.get("download", "")
-            episode.status = "downloaded"
-            episode.downloaded_at = datetime.now(timezone.utc)
+        if not links:
+            episode.status = "error"
+            episode.last_error = "No download links returned by Real-Debrid"
             await db.commit()
+            await _log(db, "error", "episode", title_tag, "No download links from RD")
+            return
+        try:
+            unrestricted = await rd.unrestrict_link(links[0])
+        except RealDebridError as e:
+            episode.status = "error"
+            episode.last_error = str(e)
+            await db.commit()
+            await _log(db, "error", "episode", title_tag, f"Unrestrict failed: {e}")
+            return
+        episode.file_path = unrestricted.get("download", "")
+        episode.status = "downloaded"
+        episode.downloaded_at = datetime.now(timezone.utc)
+        await db.commit()
+        await _log(db, "download", "episode", title_tag, "Download link ready")
+        await notifications.notify(settings, "download", title_tag, "Download link ready")
+
+
+async def _sync_download_record(db: AsyncSession, rd_torrent_id: str, rd_info: dict):
+    """Keep the Download table row in sync with the live RD torrent state."""
+    result = await db.execute(select(Download).where(Download.rd_torrent_id == rd_torrent_id))
+    dl = result.scalar_one_or_none()
+    if not dl:
+        return
+    rd_status = rd_info.get("status", "")
+    dl.progress = float(rd_info.get("progress", dl.progress))
+    dl.speed = rd_info.get("speed")
+    dl.size = rd_info.get("bytes") or dl.size
+    if rd_status == "downloaded":
+        dl.status = "downloaded"
+        dl.progress = 100.0
+        from datetime import datetime, timezone
+        dl.completed_at = datetime.now(timezone.utc)
+    elif rd_status in ("error", "dead", "magnet_error"):
+        dl.status = "failed"
+        dl.error_message = f"RD status: {rd_status}"
+    await db.commit()
 
 
 async def monitor_downloading(db: AsyncSession):
@@ -338,15 +405,18 @@ async def monitor_downloading(db: AsyncSession):
             continue
         try:
             info = await rd.get_torrent_info(movie.rd_torrent_id)
+            await _sync_download_record(db, movie.rd_torrent_id, info)
             if info.get("status") == "downloaded":
                 await _finalize_movie(db, movie, rd, settings, info)
             elif info.get("status") in ("error", "dead", "magnet_error"):
                 movie.status = "error"
                 movie.last_error = f"RD status: {info.get('status')}"
                 await db.commit()
+                await _log(db, "error", "movie", movie.title, f"RD torrent failed: {info.get('status')}")
         except Exception as e:
             movie.last_error = str(e)
             await db.commit()
+            await _log(db, "error", "movie", movie.title, f"Monitor error: {e}")
 
     # Monitor episodes
     result = await db.execute(select(Episode).where(Episode.status == "downloading"))
@@ -356,15 +426,25 @@ async def monitor_downloading(db: AsyncSession):
             continue
         try:
             info = await rd.get_torrent_info(episode.rd_torrent_id)
+            await _sync_download_record(db, episode.rd_torrent_id, info)
             if info.get("status") == "downloaded":
                 show_result = await db.execute(select(Show).where(Show.id == episode.show_id))
                 show = show_result.scalar_one_or_none()
                 if show:
                     await _finalize_episode(db, episode, show, rd, settings, info)
+                else:
+                    title_tag = f"Episode #{episode.id} (show deleted)"
+                    episode.status = "error"
+                    episode.last_error = "Parent show no longer exists"
+                    await db.commit()
+                    await _log(db, "error", "episode", title_tag, "Parent show was deleted; episode left in error state")
             elif info.get("status") in ("error", "dead", "magnet_error"):
+                title_tag = f"Episode #{episode.id} S{episode.season_number:02d}E{episode.episode_number:02d}"
                 episode.status = "error"
                 episode.last_error = f"RD status: {info.get('status')}"
                 await db.commit()
+                await _log(db, "error", "episode", title_tag, f"RD torrent failed: {info.get('status')}")
         except Exception as e:
             episode.last_error = str(e)
             await db.commit()
+            await _log(db, "error", "episode", f"Episode #{episode.id}", f"Monitor error: {e}")

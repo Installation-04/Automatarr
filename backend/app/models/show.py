@@ -55,20 +55,20 @@ class Episode(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     season_id = Column(Integer, ForeignKey("seasons.id"), nullable=False)
-    show_id = Column(Integer, ForeignKey("shows.id"), nullable=False)
+    show_id = Column(Integer, ForeignKey("shows.id"), nullable=False, index=True)
     tmdb_id = Column(Integer, nullable=True)
     season_number = Column(Integer, nullable=False)
     episode_number = Column(Integer, nullable=False)
     title = Column(String, nullable=True)
     overview = Column(String, nullable=True)
     still_path = Column(String, nullable=True)
-    air_date = Column(String, nullable=True)
+    air_date = Column(String, nullable=True, index=True)
     runtime = Column(Integer, nullable=True)
     rating = Column(Float, nullable=True)
 
     # Management
-    status = Column(String, default="missing")  # missing | wanted | searching | downloading | downloaded | ignored
-    monitor = Column(Boolean, default=True)
+    status = Column(String, default="missing", index=True)  # missing | wanted | searching | downloading | downloaded | ignored
+    monitor = Column(Boolean, default=True, index=True)
     quality_profile = Column(String, default="1080p")
 
     # Real-Debrid

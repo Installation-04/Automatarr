@@ -5,7 +5,10 @@ from typing import Optional
 
 
 def sanitize_name(name: str) -> str:
-    return re.sub(r'[<>:"/\\|?*]', "", name).strip()
+    # Strip filesystem-unsafe chars AND path separators to prevent traversal
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name)
+    name = name.replace("..", "")
+    return name.strip().strip(".")
 
 
 def find_video_file(directory: str) -> Optional[str]:
@@ -26,13 +29,17 @@ def find_video_file(directory: str) -> Optional[str]:
 
 def find_in_mount(mount_path: str, torrent_name: str) -> Optional[str]:
     """Locate the torrent folder or file in an rclone/Zurg mount."""
-    candidate = os.path.join(mount_path, torrent_name)
+    safe_name = sanitize_name(torrent_name)
+    candidate = os.path.join(mount_path, safe_name)
+    # Ensure we never escape the mount root
+    if not os.path.abspath(candidate).startswith(os.path.abspath(mount_path)):
+        return None
     if os.path.isdir(candidate):
         return candidate
     if os.path.isfile(candidate):
         return candidate
     # Fuzzy match: first directory that starts with torrent name (truncated)
-    prefix = torrent_name[:20].lower()
+    prefix = safe_name[:20].lower()
     try:
         for entry in os.scandir(mount_path):
             if entry.name.lower().startswith(prefix):
@@ -70,7 +77,10 @@ def create_movie_symlink(
     if os.path.islink(link_path):
         os.remove(link_path)
 
-    os.symlink(video, link_path)
+    try:
+        os.symlink(video, link_path)
+    except OSError:
+        return None
     return link_path
 
 
@@ -110,7 +120,10 @@ def create_episode_symlink(
     if os.path.islink(link_path):
         os.remove(link_path)
 
-    os.symlink(video, link_path)
+    try:
+        os.symlink(video, link_path)
+    except OSError:
+        return None
     return link_path
 
 

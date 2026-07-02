@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -14,9 +15,12 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with AsyncSessionLocal() as db:
         all_settings = await get_all_settings(db)
-    search_interval = int(all_settings.get("search_interval_minutes") or 30)
-    monitor_interval = int(all_settings.get("monitor_interval_minutes") or 5)
-    refresh_interval = int(all_settings.get("refresh_interval_hours") or 6) * 60
+    try:
+        search_interval = max(1, int(all_settings.get("search_interval_minutes") or 30))
+        monitor_interval = max(1, int(all_settings.get("monitor_interval_minutes") or 5))
+        refresh_interval = max(1, int(all_settings.get("refresh_interval_hours") or 6)) * 60
+    except (ValueError, TypeError):
+        search_interval, monitor_interval, refresh_interval = 30, 5, 360
     sched.start_scheduler(search_interval, monitor_interval, refresh_interval)
     yield
     sched.stop_scheduler()
@@ -24,10 +28,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Automatarr", version="1.0.0", lifespan=lifespan)
 
+# In development or when CORS_ORIGINS is unset, allow all origins (no credentials).
+# Set CORS_ORIGINS to a comma-separated list of allowed origins in production.
+_cors_origins_env = os.getenv("CORS_ORIGINS", "")
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] or ["*"]
+_allow_credentials = "*" not in _cors_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

@@ -19,9 +19,9 @@ class Movie(Base):
     rating = Column(Float, nullable=True)
 
     # Management
-    status = Column(String, default="wanted")  # wanted | searching | downloading | downloaded | error | ignored
+    status = Column(String, default="wanted", index=True)  # wanted | searching | downloading | downloaded | error | ignored
     quality_profile = Column(String, default="1080p")
-    monitor = Column(Boolean, default=True)
+    monitor = Column(Boolean, default=True, index=True)
 
     # Real-Debrid
     rd_torrent_id = Column(String, nullable=True)

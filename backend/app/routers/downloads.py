@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
@@ -17,7 +17,7 @@ async def list_downloads(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/activity")
-async def get_activity(limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def get_activity(limit: int = Query(default=50, ge=1, le=500), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(ActivityLog).order_by(desc(ActivityLog.created_at)).limit(limit))
     return [_log_out(l) for l in result.scalars().all()]
 
@@ -33,7 +33,7 @@ async def rd_queue(db: AsyncSession = Depends(get_db)):
         torrents = await rd.list_torrents()
         return torrents[:50]
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(502, f"Real-Debrid error: {e}")
 
 
 @router.delete("/{download_id}")

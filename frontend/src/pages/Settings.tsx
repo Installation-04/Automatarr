@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Save, FlaskConical, Check, X, ExternalLink } from "lucide-react";
 import { getSettings, updateSettings, testRealDebrid, testPlex, testJellyfin, testEmby } from "../api";
 import client from "../api/client";
@@ -88,9 +88,14 @@ export function Settings() {
 
   useEffect(() => { if (settings) setForm(settings); }, [settings]);
 
+  const qc = useQueryClient();
+
   const saveMut = useMutation({
     mutationFn: updateSettings,
-    onSuccess: () => toast.success("Settings saved"),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["settings"] });
+      toast.success("Settings saved");
+    },
     onError: () => toast.error("Failed to save"),
   });
 

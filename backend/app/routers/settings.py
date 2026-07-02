@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
 
 from app.database import get_db
-from app.services.settings_service import get_all_settings, set_setting
+from app.services.settings_service import get_all_settings, get_setting, bulk_set_settings
 from app.services.real_debrid import RealDebridClient, RealDebridError
 from app.services.media_server import PlexClient, JellyfinClient
 from app.services.zilean import ZileanClient
@@ -35,20 +35,31 @@ async def get_settings_raw(db: AsyncSession = Depends(get_db)):
 
 @router.put("")
 async def update_settings(body: dict[str, Any], db: AsyncSession = Depends(get_db)):
+    updates: dict[str, str] = {}
     for key, value in body.items():
-        str_value = str(value) if value is not None else ""
         # Don't overwrite masked values
-        if str_value == "••••••••":
+        if value == "••••••••":
             continue
-        await set_setting(db, key, str_value)
+        # Normalize booleans to lowercase strings so settings comparisons work
+        if isinstance(value, bool):
+            updates[key] = "true" if value else "false"
+        elif value is None:
+            updates[key] = ""
+        else:
+            updates[key] = str(value)
+
+    # Persist all changes in one transaction
+    await bulk_set_settings(db, updates)
 
     # Update scheduler if intervals changed
     if any(k in body for k in ("search_interval_minutes", "monitor_interval_minutes", "refresh_interval_hours")):
-        from app.services.settings_service import get_setting
         from app.services import scheduler as sched
-        search_interval = int(await get_setting(db, "search_interval_minutes") or 30)
-        monitor_interval = int(await get_setting(db, "monitor_interval_minutes") or 5)
-        refresh_interval = int(await get_setting(db, "refresh_interval_hours") or 6) * 60
+        try:
+            search_interval = max(1, int(await get_setting(db, "search_interval_minutes") or 30))
+            monitor_interval = max(1, int(await get_setting(db, "monitor_interval_minutes") or 5))
+            refresh_interval = max(1, int(await get_setting(db, "refresh_interval_hours") or 6)) * 60
+        except (ValueError, TypeError):
+            search_interval, monitor_interval, refresh_interval = 30, 5, 360
         sched.update_scheduler_intervals(search_interval, monitor_interval, refresh_interval)
 
     return {"ok": True}

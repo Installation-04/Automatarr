@@ -1,27 +1,56 @@
-# Zurg configuration
-# Docs: https://github.com/debridmediamanager/zurg-testing
+# ─────────────────────────────────────────────────────────────
+#  Zurg configuration
+#  Docs: https://github.com/debridmediamanager/zurg-testing
+#
+#  This file is mounted read-only into the zurg container.
+#  Run ./install.sh to have the installer fill in your API key,
+#  or set the token below manually.
+# ─────────────────────────────────────────────────────────────
 
-# Your Real-Debrid API token
+# Your Real-Debrid API key — get it at https://real-debrid.com/apitoken
+# The installer will replace this placeholder automatically.
 token: YOUR_RD_API_KEY_HERE
 
-# Host and port Zurg listens on inside the container
+# ── Network ───────────────────────────────────────────────────
+# Listen on all interfaces inside the container
 host: "[::]"
 port: 9999
 
-# How often to refresh torrent list from Real-Debrid (seconds)
+# ── Sync ──────────────────────────────────────────────────────
+# How often to poll Real-Debrid for torrent list changes (seconds).
+# Lower = faster to see new downloads; higher = less API load.
 update_interval: 10
+check_for_changes_every_secs: 10
 
-# Ignore hashes that have been deleted from RD
+# ── File handling ─────────────────────────────────────────────
+# Keep the original RD torrent/folder name in the mount path.
 retain_folder_name_extension: true
 retain_rd_torrent_name: true
 
-# Network/performance
+# ── Performance ───────────────────────────────────────────────
+# Number of parallel workers for fetching torrent info.
+# Lower if you hit RD API rate limits; higher for faster initial sync.
 concurrent_workers: 20
-check_for_changes_every_secs: 10
 
-# Expose these directories via WebDAV (/dav and /http)
+# ── Directories ───────────────────────────────────────────────
+# Defines what appears under /dav and /http WebDAV endpoints.
+# The rclone container mounts the 'torrents' directory.
 directories:
   torrents:
     group: media
     filters:
       - regex: ".*"
+
+# ── Optional: separate by type ────────────────────────────────
+# Uncomment below to split the mount into movies/shows subdirs
+# (requires matching rclone path changes and symlink.py config).
+#
+#  movies:
+#    group: media
+#    filters:
+#      - regex: "(?i)(movie|film|\d{4})"
+#
+#  shows:
+#    group: media
+#    filters:
+#      - regex: "(?i)(s\d{2}e\d{2}|season|series|episode)"
