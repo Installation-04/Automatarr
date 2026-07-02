@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getDownloads, getActivity, getRDQueue } from "../api";
 import { PageSpinner } from "../components/ui/Spinner";
@@ -21,7 +22,11 @@ const STATUS_CFG: Record<string, { color: string; label: string }> = {
   symlinked:   { color: "#34d399", label: "Symlinked"   },
 };
 
+const ALL_EVENT_TYPES = ["all", "grab", "download", "symlink", "error", "info", "search"] as const;
+
 export function Queue() {
+  const [activityFilter, setActivityFilter] = useState("all");
+
   const { data: downloads = [], isLoading: dlLoading } = useQuery({
     queryKey: ["downloads"],
     queryFn: getDownloads,
@@ -44,6 +49,9 @@ export function Queue() {
 
   const active    = downloads.filter((d: any) => ["queued", "downloading"].includes(d.status));
   const completed = downloads.filter((d: any) => !["queued", "downloading"].includes(d.status));
+  const filteredActivity = activityFilter === "all"
+    ? activity
+    : (activity as any[]).filter((log: any) => log.event_type === activityFilter);
 
   return (
     <div className="p-7 space-y-8 animate-fade-in">
@@ -108,30 +116,83 @@ export function Queue() {
         <section className="space-y-3">
           <SectionHeader icon={<Clock style={{ width: 14, height: 14 }} />} title="Real-Debrid" count={rdQueue.length} color="#60a5fa" />
           <div className="rounded-2xl overflow-hidden" style={{ background: "#0d0025", border: "1px solid rgba(0,245,255,0.12)" }}>
-            {rdQueue.slice(0, 20).map((t: any, i: number) => (
-              <div key={i} className="flex items-center justify-between px-5 py-3" style={{ borderBottom: "1px solid rgba(0,245,255,0.06)" }}>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate font-medium" style={{ color: "#d4c8f0" }}>{t.filename || t.id}</p>
-                  <p className="font-mono mt-0.5" style={{ fontSize: 10, color: "rgba(212,200,240,0.3)" }}>{(t.bytes / 1e9).toFixed(2)} GB</p>
+            {rdQueue.slice(0, 20).map((t: any, i: number) => {
+              const pct = t.progress ?? 0;
+              const isActive = t.status === "downloading";
+              return (
+                <div key={i} className="px-5 py-3.5" style={{ borderBottom: "1px solid rgba(0,245,255,0.06)" }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm truncate font-medium flex-1 min-w-0 mr-4" style={{ color: "#d4c8f0" }}>{t.filename || t.id}</p>
+                    <div className="text-right flex-shrink-0 space-y-0.5">
+                      <p className="font-mono capitalize" style={{ fontSize: 10, color: "#00f5ff" }}>{t.status}</p>
+                      {t.bytes > 0 && (
+                        <p className="font-mono" style={{ fontSize: 9, color: "rgba(0,245,255,0.4)" }}>{(t.bytes / 1e9).toFixed(2)} GB</p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Progress bar */}
+                  <div className="relative h-1 rounded-full overflow-hidden" style={{ background: "rgba(0,245,255,0.08)" }}>
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{
+                        width: `${pct}%`,
+                        background: "linear-gradient(90deg, #00f5ff, #b14fff)",
+                        boxShadow: isActive ? "0 0 8px rgba(0,245,255,0.5)" : "none",
+                      }}
+                    />
+                    {isActive && pct < 100 && (
+                      <div
+                        className="absolute inset-y-0 w-1/4 animate-download-scan rounded-full"
+                        style={{ background: "linear-gradient(90deg, transparent, rgba(0,245,255,0.4), transparent)" }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="font-mono" style={{ fontSize: 9, color: "rgba(0,245,255,0.3)" }}>
+                      {t.added ? format(new Date(t.added), "MMM d, HH:mm") : ""}
+                    </span>
+                    <span className="font-mono font-bold" style={{ fontSize: 9, color: "#00f5ff" }}>{pct}%</span>
+                  </div>
                 </div>
-                <div className="text-right flex-shrink-0 ml-4 space-y-0.5">
-                  <p className="font-mono capitalize" style={{ fontSize: 10, color: "#00f5ff" }}>{t.status}</p>
-                  <p className="font-mono" style={{ fontSize: 10, color: "rgba(0,245,255,0.4)" }}>{t.progress ?? 0}%</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
 
       {/* Activity log */}
       <section className="space-y-3">
-        <SectionHeader icon={<Activity style={{ width: 14, height: 14 }} />} title="Activity Log" color="#94a3b8" />
-        {activity.length === 0 ? (
-          <EmptyCard icon="📋" message="No activity recorded yet" />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <SectionHeader icon={<Activity style={{ width: 14, height: 14 }} />} title="Activity Log" color="#94a3b8" />
+          {/* Event type filter pills */}
+          <div className="flex gap-1.5 flex-wrap">
+            {ALL_EVENT_TYPES.map((type) => {
+              const cfg = EVENT_CONFIG[type] ?? { label: type, color: "#94a3b8", bg: "rgba(148,163,184,0.12)" };
+              const active = activityFilter === type;
+              return (
+                <button
+                  key={type}
+                  onClick={() => setActivityFilter(type)}
+                  className="px-2.5 py-1 rounded-lg font-mono font-bold capitalize transition-all duration-150"
+                  style={{
+                    fontSize: 9,
+                    letterSpacing: "0.1em",
+                    color: active ? cfg.color : "rgba(148,163,184,0.4)",
+                    background: active ? cfg.bg : "transparent",
+                    border: active ? `1px solid ${cfg.color}33` : "1px solid rgba(255,255,255,0.05)",
+                  }}
+                >
+                  {type === "all" ? "ALL" : cfg.label.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {filteredActivity.length === 0 ? (
+          <EmptyCard icon="📋" message={activity.length === 0 ? "No activity recorded yet" : "No matching events"} />
         ) : (
           <div className="rounded-2xl overflow-hidden" style={{ background: "#0d0025", border: "1px solid rgba(255,0,110,0.12)" }}>
-            {(activity as any[]).map((log: any) => {
+            {(filteredActivity as any[]).map((log: any) => {
               const cfg = EVENT_CONFIG[log.event_type] ?? { label: log.event_type, color: "#64748b", bg: "rgba(100,116,139,0.12)" };
               return (
                 <div

@@ -56,6 +56,15 @@ export function Calendar() {
           >
             <ChevronRight style={{ width: 15, height: 15 }} />
           </button>
+          <button
+            onClick={() => setMonth(new Date())}
+            className="ml-1 px-3 h-8 rounded-xl font-mono font-bold transition-all"
+            style={{ fontSize: 9, letterSpacing: "0.12em", background: "rgba(255,0,110,0.08)", border: "1px solid rgba(255,0,110,0.25)", color: "rgba(255,0,110,0.6)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "#ff006e"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,0,110,0.5)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "rgba(255,0,110,0.6)"; (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(255,0,110,0.25)"; }}
+          >
+            TODAY
+          </button>
         </div>
       </div>
 
@@ -99,15 +108,23 @@ export function Calendar() {
                   {format(day, "d")}
                 </div>
                 <div className="space-y-0.5">
-                  {dayItems.slice(0, 3).map((item: any, i: number) => (
-                    <div
-                      key={i}
-                      className="rounded px-1.5 py-0.5 font-mono truncate"
-                      style={{ fontSize: 9, color: "#ffe600", background: "rgba(255,230,0,0.08)", border: "1px solid rgba(255,230,0,0.2)" }}
-                    >
-                      {item.title}
-                    </div>
-                  ))}
+                  {dayItems.slice(0, 3).map((item: any, i: number) => {
+                    const statusColor = item.status === "downloaded" ? "#00ff88"
+                      : item.status === "downloading" ? "#a78bfa"
+                      : item.status === "wanted" ? "#b14fff"
+                      : item.status === "error" ? "#f87171"
+                      : "#ffe600";
+                    return (
+                      <div
+                        key={i}
+                        className="rounded px-1.5 py-0.5 font-mono truncate"
+                        style={{ fontSize: 9, color: statusColor, background: `${statusColor}12`, border: `1px solid ${statusColor}33` }}
+                        title={`${item.title} — ${item.status}`}
+                      >
+                        {item.title}
+                      </div>
+                    );
+                  })}
                   {dayItems.length > 3 && (
                     <p className="font-mono pl-1" style={{ fontSize: 8, color: "rgba(255,230,0,0.35)" }}>+{dayItems.length - 3} more</p>
                   )}
