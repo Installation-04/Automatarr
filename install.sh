@@ -130,7 +130,7 @@ _ensure_fuse() {
 
 # ── shared functions ───────────────────────────────────────────
 _wait_for_backend() {
-  local url="http://localhost:${BACKEND_PORT:-8000}/api/system/health"
+  local url="http://localhost:${BACKEND_PORT:-7980}/api/system/health"
   local max=30 i=0
   echo -en "  ${CYAN}▸${RESET}  Waiting for backend"
   while ! curl -sf "$url" &>/dev/null; do
@@ -150,8 +150,8 @@ _wait_for_backend() {
 
 _show_url_summary() {
   local flags="${1:-}"
-  local port="${PORT:-3000}"
-  local backend="${BACKEND_PORT:-8000}"
+  local port="${PORT:-7979}"
+  local backend="${BACKEND_PORT:-7980}"
 
   echo
   echo -e "  ${BOLD}${GREEN}Services running:${RESET}"
@@ -301,8 +301,8 @@ if [[ "${_env_skip:-false}" == "false" ]]; then
 
   echo
   echo -e "  ${BOLD}Ports${RESET} ${DIM}(change if defaults conflict with other services)${RESET}"
-  PORT_VAL=$(ask_def "Automatarr UI port" "3000")
-  BACKEND_PORT_VAL=$(ask_def "Backend API port " "8000")
+  PORT_VAL=$(ask_def "Automatarr UI port" "7979")
+  BACKEND_PORT_VAL=$(ask_def "Backend API port " "7980")
 
   echo
   ok "Generating .env…"

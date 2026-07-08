@@ -69,7 +69,7 @@ ok "Services restarted."
 
 # ── health check ───────────────────────────────────────────────
 _wait_for_backend() {
-  local url="http://localhost:${BACKEND_PORT:-8000}/api/system/health"
+  local url="http://localhost:${BACKEND_PORT:-7980}/api/system/health"
   local max=30 i=0
   echo -en "  ${CYAN}▸${RESET}  Waiting for backend"
   while ! curl -sf "$url" &>/dev/null; do
@@ -88,7 +88,7 @@ _wait_for_backend() {
 _wait_for_backend
 
 step "Update Complete"
-echo -e "  ${CYAN}Automatarr${RESET}  →  http://localhost:${PORT:-3000}"
+echo -e "  ${CYAN}Automatarr${RESET}  →  http://localhost:${PORT:-7979}"
 echo
 echo -e "  ${DIM}View running containers:  $DC ps${RESET}"
 echo -e "  ${DIM}View logs:                $DC logs -f backend${RESET}"

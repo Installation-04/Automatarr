@@ -18,7 +18,7 @@ cp .env.example .env
 | + Zurg + Plex | `docker-compose --profile zurg --profile plex up -d` |
 | + Zurg + Jellyfin | `docker-compose --profile zurg --profile jellyfin up -d` |
 
-Open **http://localhost:3000** → **Settings** to configure.
+Open **http://localhost:7979** → **Settings** to configure.
 
 ## Required Setup
 
@@ -87,12 +87,12 @@ volumes:
 
 | Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3000` | Web UI port |
-| `BACKEND_PORT` | `8000` | API port |
+| `PORT` | `7979` | Web UI port |
+| `BACKEND_PORT` | `7980` | API port |
 | `MOVIES_PATH` | `/media/movies` | Movies library on host |
 | `SHOWS_PATH` | `/media/shows` | Shows library on host |
 | `ZURG_MOUNT_PATH` | `/mnt/zurg` | rclone mount on host |
 
 ## API
 
-The backend runs at `:8000/api`. Interactive docs at `http://localhost:8000/docs`.
+The backend runs at `:7980/api`. Interactive docs at `http://localhost:7980/docs`.
