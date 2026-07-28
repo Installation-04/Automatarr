@@ -113,6 +113,9 @@ DEFAULTS = {
     "search_interval_minutes": "30",
     "monitor_interval_minutes": "5",
     "refresh_interval_hours": "6",
+    # Stop auto-retrying an item after this many failed searches
+    # (manual search resets the counter)
+    "max_search_attempts": "15",
 
     # Setup
     "onboarding_complete": "false",

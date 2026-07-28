@@ -75,7 +75,7 @@ For uncached content (rare titles), RD must download the torrent first, which ca
 
 ### Why is a movie/episode stuck in `wanted`?
 
-No cached Real-Debrid result was found by the indexer. The scheduler retries every 30 minutes automatically. Common reasons:
+No cached Real-Debrid result was found by the indexer. The scheduler retries every 30 minutes automatically, up to **Max Search Attempts** (default 15 — a manual search resets the counter). Common reasons:
 - The content is obscure — try adding Zilean as a second indexer
 - The content is very new — RD cache may take 24–48 hours to be populated
 - The torrent quality filter is too strict — try `any` quality profile

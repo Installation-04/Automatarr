@@ -121,7 +121,41 @@ DELETE /api/movies/{id}
 POST /api/movies/{id}/search
 ```
 
-Immediately searches for and grabs this movie.
+Immediately searches for and grabs this movie. Also resets the search-attempt counter.
+
+### List Releases (Interactive Search)
+
+```
+GET /api/movies/{id}/releases
+```
+
+Returns all candidate releases from the configured indexers so you can pick one manually.
+
+**Response item:**
+```json
+{
+  "info_hash": "abc123...",
+  "title": "Inception.2010.1080p.BluRay.x264",
+  "indexer": "Torrentio",
+  "quality": "1080p",
+  "size_gb": 8.5,
+  "seeders": 50,
+  "source": "BluRay"
+}
+```
+
+### Grab a Specific Release
+
+```
+POST /api/movies/{id}/grab
+```
+
+**Request:**
+```json
+{"info_hash": "abc123..."}
+```
+
+Grabs the exact release chosen from `/releases` instead of the automatic best match.
 
 ### Get Stats
 
@@ -198,7 +232,32 @@ DELETE /api/shows/{id}
 POST /api/shows/{id}/search
 ```
 
-Marks all `missing`/`error` episodes as `wanted` and immediately searches.
+Marks all `missing`/`error` episodes as `wanted`, resets attempt counters, and immediately searches.
+
+### Search a Single Episode
+
+```
+POST /api/shows/{show_id}/episodes/{episode_id}/search
+```
+
+### List Releases for an Episode (Interactive Search)
+
+```
+GET /api/shows/{show_id}/episodes/{episode_id}/releases
+```
+
+Same response shape as the movie `/releases` endpoint.
+
+### Grab a Specific Episode Release
+
+```
+POST /api/shows/{show_id}/episodes/{episode_id}/grab
+```
+
+**Request:**
+```json
+{"info_hash": "abc123..."}
+```
 
 ### Refresh Show Metadata
 
@@ -237,11 +296,12 @@ GET /api/shows/stats
 ### List Downloads
 
 ```
-GET /api/downloads?limit=50&offset=0
+GET /api/downloads?limit=100&offset=0&status=downloaded
 ```
 
-- `limit`: 1–500, default 50
+- `limit`: 1–500, default 100
 - `offset`: pagination offset
+- `status`: optional filter (`downloading`, `downloaded`, `failed`)
 
 **Response item:**
 ```json
@@ -266,10 +326,60 @@ GET /api/downloads?limit=50&offset=0
 ### Get RD Queue
 
 ```
-GET /api/downloads/rd-queue
+GET /api/downloads/rd/queue
 ```
 
 Returns active torrents directly from the Real-Debrid API.
+
+### Activity Log
+
+```
+GET /api/downloads/activity?limit=50&offset=0&event_type=error
+```
+
+- `limit`: 1–500, default 50
+- `offset`: pagination offset
+- `event_type`: optional filter (`grab`, `download`, `error`, `search`)
+
+### Clear Download History
+
+```
+DELETE /api/downloads/history
+```
+
+Removes finished (`downloaded`/`failed`) download records. Active downloads are kept.
+
+**Response:** `{"ok": true, "deleted": 42}`
+
+---
+
+## Scheduler
+
+### Scheduler Status
+
+```
+GET /api/system/scheduler
+```
+
+**Response:**
+```json
+{
+  "running": true,
+  "jobs": [
+    {"id": "search_wanted", "next_run": "2024-01-15T03:00:00+00:00"},
+    {"id": "monitor_downloads", "next_run": "2024-01-15T02:35:00+00:00"},
+    {"id": "refresh_upcoming", "next_run": "2024-01-15T08:30:00+00:00"}
+  ]
+}
+```
+
+### Run a Job Immediately
+
+```
+POST /api/system/scheduler/run/{job_id}
+```
+
+Valid job IDs: `search_wanted`, `monitor_downloads`, `refresh_upcoming`.
 
 ---
 
