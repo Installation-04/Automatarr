@@ -2,6 +2,8 @@ import httpx
 from typing import Optional
 import asyncio
 
+from app.services.http_client import get_client
+
 RD_BASE = "https://api.real-debrid.com/rest/1.0"
 
 
@@ -15,29 +17,26 @@ class RealDebridClient:
         self.headers = {"Authorization": f"Bearer {api_key}"}
 
     async def _get(self, path: str, params: dict = None):
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(f"{RD_BASE}{path}", headers=self.headers, params=params)
-            if r.status_code == 401:
-                raise RealDebridError("Invalid Real-Debrid API key")
-            if r.status_code not in (200, 201):
-                raise RealDebridError(f"RD API error {r.status_code}: {r.text}")
-            return r.json()
+        r = await get_client().get(f"{RD_BASE}{path}", headers=self.headers, params=params)
+        if r.status_code == 401:
+            raise RealDebridError("Invalid Real-Debrid API key")
+        if r.status_code not in (200, 201):
+            raise RealDebridError(f"RD API error {r.status_code}: {r.text}")
+        return r.json()
 
     async def _post(self, path: str, data: dict = None):
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post(f"{RD_BASE}{path}", headers=self.headers, data=data)
-            if r.status_code == 401:
-                raise RealDebridError("Invalid Real-Debrid API key")
-            if r.status_code not in (200, 201, 204):
-                raise RealDebridError(f"RD API error {r.status_code}: {r.text}")
-            if r.status_code == 204:
-                return {}
-            return r.json()
+        r = await get_client().post(f"{RD_BASE}{path}", headers=self.headers, data=data)
+        if r.status_code == 401:
+            raise RealDebridError("Invalid Real-Debrid API key")
+        if r.status_code not in (200, 201, 204):
+            raise RealDebridError(f"RD API error {r.status_code}: {r.text}")
+        if r.status_code == 204:
+            return {}
+        return r.json()
 
     async def _delete(self, path: str):
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.delete(f"{RD_BASE}{path}", headers=self.headers)
-            return r.status_code in (200, 204)
+        r = await get_client().delete(f"{RD_BASE}{path}", headers=self.headers)
+        return r.status_code in (200, 204)
 
     async def get_user(self) -> dict:
         return await self._get("/user")
@@ -52,15 +51,14 @@ class RealDebridClient:
         return await self._post("/torrents/addMagnet", {"magnet": magnet})
 
     async def add_torrent(self, torrent_bytes: bytes) -> dict:
-        async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.put(
-                f"{RD_BASE}/torrents/addTorrent",
-                headers=self.headers,
-                content=torrent_bytes,
-            )
-            if r.status_code not in (200, 201):
-                raise RealDebridError(f"RD API error {r.status_code}: {r.text}")
-            return r.json()
+        r = await get_client().put(
+            f"{RD_BASE}/torrents/addTorrent",
+            headers=self.headers,
+            content=torrent_bytes,
+        )
+        if r.status_code not in (200, 201):
+            raise RealDebridError(f"RD API error {r.status_code}: {r.text}")
+        return r.json()
 
     async def select_files(self, torrent_id: str, file_ids: str = "all"):
         """Select files to download. file_ids='all' or comma-separated IDs."""

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.services import scheduler as sched
+from app.services.http_client import close_client
 from app.services.settings_service import get_all_settings
 from app.database import AsyncSessionLocal
 from app.routers import movies, shows, search, downloads, settings, system, calendar
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     sched.start_scheduler(search_interval, monitor_interval, refresh_interval)
     yield
     sched.stop_scheduler()
+    await close_client()
 
 
 app = FastAPI(title="Automatarr", version="1.0.0", lifespan=lifespan)

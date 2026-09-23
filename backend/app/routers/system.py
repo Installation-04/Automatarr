@@ -151,3 +151,32 @@ async def _run_search_all():
     from app.database import AsyncSessionLocal
     from app.services.scheduler import _search_wanted
     await _search_wanted()
+
+
+@router.get("/scheduler")
+async def scheduler_status():
+    """Show background job state and next run times."""
+    from app.services.scheduler import scheduler
+    jobs = [
+        {
+            "id": job.id,
+            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+        }
+        for job in scheduler.get_jobs()
+    ]
+    return {"running": scheduler.running, "jobs": jobs}
+
+
+@router.post("/scheduler/run/{job_id}")
+async def run_scheduler_job(job_id: str, background_tasks: BackgroundTasks):
+    """Run one of the background jobs immediately."""
+    from app.services import scheduler as sched_mod
+    jobs = {
+        "search_wanted": sched_mod._search_wanted,
+        "monitor_downloads": sched_mod._monitor_downloads,
+        "refresh_upcoming": sched_mod._refresh_upcoming,
+    }
+    if job_id not in jobs:
+        raise HTTPException(404, f"Unknown job. Valid jobs: {', '.join(jobs)}")
+    background_tasks.add_task(jobs[job_id])
+    return {"ok": True, "message": f"Job '{job_id}' triggered"}

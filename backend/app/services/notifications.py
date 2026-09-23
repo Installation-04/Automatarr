@@ -2,6 +2,8 @@ import httpx
 import logging
 from typing import Optional
 
+from app.services.http_client import get_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,32 +17,29 @@ async def send_discord(webhook_url: str, title: str, message: str, color: int = 
             "color": color,
         }]
     }
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            await client.post(webhook_url, json=payload)
-        except Exception as e:
-            logger.warning("Discord notification failed: %s", e)
+    try:
+        await get_client().post(webhook_url, json=payload, timeout=10)
+    except Exception as e:
+        logger.warning("Discord notification failed: %s", e)
 
 
 async def send_telegram(bot_token: str, chat_id: str, message: str):
     if not bot_token or not chat_id:
         return
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            await client.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"})
-        except Exception as e:
-            logger.warning("Telegram notification failed: %s", e)
+    try:
+        await get_client().post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"}, timeout=10)
+    except Exception as e:
+        logger.warning("Telegram notification failed: %s", e)
 
 
 async def send_webhook(webhook_url: str, payload: dict):
     if not webhook_url:
         return
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            await client.post(webhook_url, json=payload)
-        except Exception as e:
-            logger.warning("Webhook notification failed: %s", e)
+    try:
+        await get_client().post(webhook_url, json=payload, timeout=10)
+    except Exception as e:
+        logger.warning("Webhook notification failed: %s", e)
 
 
 async def notify(

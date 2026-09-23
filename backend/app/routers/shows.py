@@ -12,9 +12,14 @@ from app.database import get_db
 from app.models.show import Show, Season, Episode
 from app.services.tmdb import TMDBClient
 from app.services import grabber
-from app.services.settings_service import get_setting
+from app.services.torrentio import describe_streams
+from app.services.settings_service import get_setting, get_all_settings
 
 router = APIRouter(prefix="/api/shows", tags=["shows"])
+
+
+class GrabReleaseRequest(BaseModel):
+    info_hash: str
 
 
 class AddShowRequest(BaseModel):
@@ -175,9 +180,60 @@ async def search_show(show_id: int, background_tasks: BackgroundTasks, db: Async
     for ep in episodes:
         ep.status = "wanted"
         ep.last_error = None
+        ep.search_attempts = 0
     await db.commit()
     background_tasks.add_task(_grab_wanted_episodes, show_id)
     return {"ok": True, "message": f"Search queued for {len(episodes)} episodes"}
+
+
+@router.get("/{show_id}/episodes/{episode_id}/releases")
+async def list_episode_releases(show_id: int, episode_id: int, db: AsyncSession = Depends(get_db)):
+    """Interactive search: list all candidate releases for one episode."""
+    show = await _get_or_404(db, show_id)
+    episode = await _get_episode_or_404(db, show_id, episode_id)
+    if not show.imdb_id:
+        raise HTTPException(400, "Show has no IMDB ID — cannot search")
+    settings = await get_all_settings(db)
+    try:
+        streams = await grabber._get_streams(
+            settings, show.imdb_id, "show",
+            title=show.title, year=show.year,
+            season=episode.season_number, episode=episode.episode_number,
+        )
+    except Exception as e:
+        raise HTTPException(502, f"Indexer error: {e}")
+    return describe_streams(streams)
+
+
+@router.post("/{show_id}/episodes/{episode_id}/grab")
+async def grab_episode_release(
+    show_id: int, episode_id: int, req: GrabReleaseRequest,
+    background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db),
+):
+    """Grab a specific release chosen from /releases."""
+    await _get_or_404(db, show_id)
+    episode = await _get_episode_or_404(db, show_id, episode_id)
+    episode.status = "wanted"
+    episode.last_error = None
+    await db.commit()
+    background_tasks.add_task(_grab_episode_task, show_id, episode_id, req.info_hash)
+    return {"ok": True, "message": "Grab queued"}
+
+
+@router.post("/{show_id}/episodes/{episode_id}/search")
+async def search_episode(
+    show_id: int, episode_id: int,
+    background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db),
+):
+    """Trigger an automatic search for a single episode."""
+    await _get_or_404(db, show_id)
+    episode = await _get_episode_or_404(db, show_id, episode_id)
+    episode.status = "wanted"
+    episode.last_error = None
+    episode.search_attempts = 0
+    await db.commit()
+    background_tasks.add_task(_grab_episode_task, show_id, episode_id, None)
+    return {"ok": True, "message": "Search queued"}
 
 
 @router.put("/{show_id}/seasons/{season_number}/monitor")
@@ -217,6 +273,31 @@ async def _get_or_404(db: AsyncSession, show_id: int) -> Show:
     if not show:
         raise HTTPException(404, "Show not found")
     return show
+
+
+async def _get_episode_or_404(db: AsyncSession, show_id: int, episode_id: int) -> Episode:
+    result = await db.execute(
+        select(Episode).where(Episode.id == episode_id, Episode.show_id == show_id)
+    )
+    episode = result.scalar_one_or_none()
+    if not episode:
+        raise HTTPException(404, "Episode not found")
+    return episode
+
+
+async def _grab_episode_task(show_id: int, episode_id: int, info_hash: str = None):
+    from app.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        show_result = await db.execute(select(Show).where(Show.id == show_id))
+        show = show_result.scalar_one_or_none()
+        ep_result = await db.execute(select(Episode).where(Episode.id == episode_id))
+        episode = ep_result.scalar_one_or_none()
+        if not show or not episode:
+            return
+        try:
+            await grabber.grab_episode(db, episode, show, info_hash=info_hash)
+        except Exception as e:
+            logger.error("Error grabbing episode %d: %s", episode_id, e)
 
 
 async def _grab_wanted_episodes(show_id: int):

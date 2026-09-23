@@ -2,6 +2,8 @@ import httpx
 import logging
 from typing import Optional
 
+from app.services.http_client import get_client
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,24 +30,22 @@ class ZileanClient:
         return await self._search(params)
 
     async def _search(self, params: dict) -> list[dict]:
-        async with httpx.AsyncClient(timeout=15) as client:
-            try:
-                r = await client.get(f"{self.base_url}/search/torrents", params=params)
-                if r.status_code != 200:
-                    logger.warning("Zilean search returned HTTP %d", r.status_code)
-                    return []
-                return r.json()
-            except Exception as e:
-                logger.warning("Zilean search failed: %s", e)
+        try:
+            r = await get_client().get(f"{self.base_url}/search/torrents", params=params, timeout=15)
+            if r.status_code != 200:
+                logger.warning("Zilean search returned HTTP %d", r.status_code)
                 return []
+            return r.json()
+        except Exception as e:
+            logger.warning("Zilean search failed: %s", e)
+            return []
 
     async def ping(self) -> bool:
-        async with httpx.AsyncClient(timeout=5) as client:
-            try:
-                r = await client.get(f"{self.base_url}/healthchecks/ping")
-                return r.status_code == 200
-            except Exception:
-                return False
+        try:
+            r = await get_client().get(f"{self.base_url}/healthchecks/ping", timeout=5)
+            return r.status_code == 200
+        except Exception:
+            return False
 
     def to_streams(self, results: list[dict]) -> list[dict]:
         """Convert Zilean results to the same stream dict shape as Torrentio."""

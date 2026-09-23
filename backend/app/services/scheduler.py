@@ -1,7 +1,7 @@
 import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import datetime, timezone
 
 from app.database import AsyncSessionLocal
@@ -21,7 +21,18 @@ async def _search_wanted():
         if not settings.get("rd_api_key"):
             return
 
-        result = await db.execute(select(Movie).where(Movie.status == "wanted", Movie.monitor == True))
+        try:
+            max_attempts = max(1, int(settings.get("max_search_attempts") or 15))
+        except (ValueError, TypeError):
+            max_attempts = 15
+
+        result = await db.execute(
+            select(Movie).where(
+                Movie.status == "wanted",
+                Movie.monitor == True,
+                func.coalesce(Movie.search_attempts, 0) < max_attempts,
+            )
+        )
         movies = result.scalars().all()
         for movie in movies:
             try:
@@ -30,7 +41,11 @@ async def _search_wanted():
                 logger.error("Error grabbing movie %d: %s", movie.id, e)
 
         result = await db.execute(
-            select(Episode).where(Episode.status == "wanted", Episode.monitor == True)
+            select(Episode).where(
+                Episode.status == "wanted",
+                Episode.monitor == True,
+                func.coalesce(Episode.search_attempts, 0) < max_attempts,
+            )
         )
         episodes = result.scalars().all()
         if episodes:

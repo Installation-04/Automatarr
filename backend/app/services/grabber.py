@@ -55,7 +55,16 @@ async def _log(db: AsyncSession, event_type: str, media_type: str, media_title: 
     await db.commit()
 
 
-async def grab_movie(db: AsyncSession, movie: Movie):
+def _pick_stream(streams: list[dict], quality_profile: str, info_hash: str = None):
+    """Pick a specific release by hash, or the best match for the profile."""
+    torrentio = TorrentioClient()
+    if info_hash:
+        wanted = info_hash.lower()
+        return next((s for s in streams if s.get("infoHash", "").lower() == wanted), None)
+    return torrentio.pick_best_stream(streams, quality_profile)
+
+
+async def grab_movie(db: AsyncSession, movie: Movie, info_hash: str = None):
     settings = await get_all_settings(db)
     rd_key = settings.get("rd_api_key", "")
     if not rd_key:
@@ -89,10 +98,10 @@ async def grab_movie(db: AsyncSession, movie: Movie):
         return
 
     torrentio = TorrentioClient()
-    stream = torrentio.pick_best_stream(streams, movie.quality_profile or settings.get("default_quality", "1080p"))
+    stream = _pick_stream(streams, movie.quality_profile or settings.get("default_quality", "1080p"), info_hash)
     if not stream:
         movie.status = "wanted"
-        movie.last_error = "No matching stream for quality profile"
+        movie.last_error = "Selected release not found" if info_hash else "No matching stream for quality profile"
         await db.commit()
         return
 
@@ -206,7 +215,7 @@ async def _finalize_movie(db: AsyncSession, movie: Movie, rd: RealDebridClient, 
         await notifications.notify(settings, "download", movie.title, "Download link ready")
 
 
-async def grab_episode(db: AsyncSession, episode: Episode, show: Show):
+async def grab_episode(db: AsyncSession, episode: Episode, show: Show, info_hash: str = None):
     settings = await get_all_settings(db)
     rd_key = settings.get("rd_api_key", "")
     if not rd_key:
@@ -244,10 +253,10 @@ async def grab_episode(db: AsyncSession, episode: Episode, show: Show):
         return
 
     torrentio = TorrentioClient()
-    stream = torrentio.pick_best_stream(streams, episode.quality_profile or show.quality_profile or "1080p")
+    stream = _pick_stream(streams, episode.quality_profile or show.quality_profile or "1080p", info_hash)
     if not stream:
         episode.status = "wanted"
-        episode.last_error = "No matching stream for quality profile"
+        episode.last_error = "Selected release not found" if info_hash else "No matching stream for quality profile"
         await db.commit()
         return
 

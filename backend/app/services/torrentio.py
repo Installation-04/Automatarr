@@ -2,6 +2,8 @@ import httpx
 import re
 from typing import Optional
 
+from app.services.http_client import get_client
+
 TORRENTIO_BASE = "https://torrentio.strem.fun"
 
 QUALITY_PRIORITY = {
@@ -62,6 +64,33 @@ def _quality_rank(quality: str, preferred: str) -> int:
         return 99
 
 
+def describe_streams(streams: list[dict]) -> list[dict]:
+    """Parse raw indexer streams into a display-friendly release list."""
+    releases = []
+    seen_hashes = set()
+    for s in streams:
+        info_hash = s.get("infoHash", "").lower()
+        if not info_hash or info_hash in seen_hashes:
+            continue
+        seen_hashes.add(info_hash)
+        title = s.get("title", "")
+        name = s.get("name", "")
+        release_title = title.split("\n")[0] if title else name
+        releases.append({
+            "info_hash": info_hash,
+            "title": release_title,
+            "indexer": "Zilean" if name == "Zilean" else "Torrentio",
+            "quality": _parse_quality(title + " " + name),
+            "size_gb": round(_parse_size_gb(title), 2),
+            "seeders": _parse_seeders(title),
+            "source": next(
+                (src for src in SOURCE_PRIORITY if src.upper() in (name + " " + title).upper()),
+                None,
+            ),
+        })
+    return releases
+
+
 class TorrentioClient:
     def __init__(self, base_url: str = TORRENTIO_BASE, options: str = ""):
         self.base_url = base_url.rstrip("/")
@@ -74,21 +103,19 @@ class TorrentioClient:
 
     async def search_movie(self, imdb_id: str) -> list[dict]:
         url = f"{self.base_url}{self._opts_prefix()}/stream/movie/{imdb_id}.json"
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return []
-            data = r.json()
-            return data.get("streams", [])
+        r = await get_client().get(url, timeout=20)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        return data.get("streams", [])
 
     async def search_episode(self, imdb_id: str, season: int, episode: int) -> list[dict]:
         url = f"{self.base_url}{self._opts_prefix()}/stream/series/{imdb_id}:{season}:{episode}.json"
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return []
-            data = r.json()
-            return data.get("streams", [])
+        r = await get_client().get(url, timeout=20)
+        if r.status_code != 200:
+            return []
+        data = r.json()
+        return data.get("streams", [])
 
     def pick_best_stream(self, streams: list[dict], quality_profile: str = "1080p") -> Optional[dict]:
         """Score and return the best stream for the given quality profile."""

@@ -1,6 +1,8 @@
 import httpx
 from typing import Optional
 
+from app.services.http_client import get_client
+
 
 class PlexClient:
     def __init__(self, url: str, token: str):
@@ -9,32 +11,30 @@ class PlexClient:
         self.headers = {"X-Plex-Token": token, "Accept": "application/json"}
 
     async def get_libraries(self) -> list[dict]:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(f"{self.url}/library/sections", headers=self.headers)
-            r.raise_for_status()
-            data = r.json()
-            return data.get("MediaContainer", {}).get("Directory", [])
+        r = await get_client().get(f"{self.url}/library/sections", headers=self.headers, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        return data.get("MediaContainer", {}).get("Directory", [])
 
     async def refresh_library(self, library_key: str):
-        async with httpx.AsyncClient(timeout=10) as client:
-            await client.get(
-                f"{self.url}/library/sections/{library_key}/refresh",
-                headers=self.headers,
-            )
+        await get_client().get(
+            f"{self.url}/library/sections/{library_key}/refresh",
+            headers=self.headers,
+            timeout=10,
+        )
 
     async def scan_path(self, library_key: str, path: str):
-        async with httpx.AsyncClient(timeout=10) as client:
-            await client.get(
-                f"{self.url}/library/sections/{library_key}/refresh",
-                headers=self.headers,
-                params={"path": path},
-            )
+        await get_client().get(
+            f"{self.url}/library/sections/{library_key}/refresh",
+            headers=self.headers,
+            params={"path": path},
+            timeout=10,
+        )
 
     async def test(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.get(f"{self.url}/identity", headers=self.headers)
-                return r.status_code == 200
+            r = await get_client().get(f"{self.url}/identity", headers=self.headers, timeout=5)
+            return r.status_code == 200
         except Exception:
             return False
 
@@ -46,23 +46,20 @@ class JellyfinClient:
         self.headers = {"X-Emby-Token": api_key}
 
     async def get_libraries(self) -> list[dict]:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(f"{self.url}/Library/VirtualFolders", headers=self.headers)
-            r.raise_for_status()
-            return r.json()
+        r = await get_client().get(f"{self.url}/Library/VirtualFolders", headers=self.headers, timeout=10)
+        r.raise_for_status()
+        return r.json()
 
     async def refresh_library(self):
-        async with httpx.AsyncClient(timeout=10) as client:
-            await client.post(f"{self.url}/Library/Refresh", headers=self.headers)
+        await get_client().post(f"{self.url}/Library/Refresh", headers=self.headers, timeout=10)
 
     async def scan_path(self, path: str):
         await self.refresh_library()
 
     async def test(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.get(f"{self.url}/System/Info/Public", headers=self.headers)
-                return r.status_code == 200
+            r = await get_client().get(f"{self.url}/System/Info/Public", headers=self.headers, timeout=5)
+            return r.status_code == 200
         except Exception:
             return False
 

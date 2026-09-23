@@ -144,6 +144,7 @@ Available quality profiles: `4k`, `1080p`, `720p`, `any`
 | **Search Interval** | `30` minutes | How often to search for wanted media |
 | **Monitor Interval** | `5` minutes | How often to check download progress |
 | **Refresh Interval** | `6` hours | How often to mark aired episodes as wanted |
+| **Max Search Attempts** | `15` | Stop auto-retrying an item after this many failed searches. A manual search resets the counter. |
 
 ### Companion Apps
 

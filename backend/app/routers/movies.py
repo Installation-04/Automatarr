@@ -9,9 +9,14 @@ from app.database import get_db
 from app.models.movie import Movie
 from app.services.tmdb import TMDBClient
 from app.services import grabber
+from app.services.torrentio import describe_streams
 from app.services.settings_service import get_all_settings, get_setting
 
 router = APIRouter(prefix="/api/movies", tags=["movies"])
+
+
+class GrabReleaseRequest(BaseModel):
+    info_hash: str
 
 
 class AddMovieRequest(BaseModel):
@@ -106,9 +111,37 @@ async def search_movie(movie_id: int, background_tasks: BackgroundTasks, db: Asy
     movie = await _get_or_404(db, movie_id)
     movie.status = "wanted"
     movie.last_error = None
+    movie.search_attempts = 0
     await db.commit()
     background_tasks.add_task(_grab_movie_task, movie_id)
     return {"ok": True, "message": "Search queued"}
+
+
+@router.get("/{movie_id}/releases")
+async def list_releases(movie_id: int, db: AsyncSession = Depends(get_db)):
+    """Interactive search: list all candidate releases from the configured indexers."""
+    movie = await _get_or_404(db, movie_id)
+    if not movie.imdb_id:
+        raise HTTPException(400, "Movie has no IMDB ID — cannot search")
+    settings = await get_all_settings(db)
+    try:
+        streams = await grabber._get_streams(
+            settings, movie.imdb_id, "movie", title=movie.title, year=movie.year
+        )
+    except Exception as e:
+        raise HTTPException(502, f"Indexer error: {e}")
+    return describe_streams(streams)
+
+
+@router.post("/{movie_id}/grab")
+async def grab_release(movie_id: int, req: GrabReleaseRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    """Grab a specific release chosen from /releases."""
+    movie = await _get_or_404(db, movie_id)
+    movie.status = "wanted"
+    movie.last_error = None
+    await db.commit()
+    background_tasks.add_task(_grab_movie_task, movie_id, req.info_hash)
+    return {"ok": True, "message": "Grab queued"}
 
 
 @router.post("/{movie_id}/refresh")
@@ -134,13 +167,13 @@ async def _get_or_404(db: AsyncSession, movie_id: int) -> Movie:
     return movie
 
 
-async def _grab_movie_task(movie_id: int):
+async def _grab_movie_task(movie_id: int, info_hash: str = None):
     from app.database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
         result = await db.execute(select(Movie).where(Movie.id == movie_id))
         movie = result.scalar_one_or_none()
         if movie:
-            await grabber.grab_movie(db, movie)
+            await grabber.grab_movie(db, movie, info_hash=info_hash)
 
 
 def _movie_out(m: Movie) -> dict:
