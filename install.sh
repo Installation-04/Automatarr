@@ -411,7 +411,7 @@ for p in $profile_input; do
   SELECTED_PROFILES+=("$p")
 done
 
-_has_profile() { [[ " ${SELECTED_PROFILES[*]} " =~ " $1 " ]]; }
+_has_profile() { [[ " ${SELECTED_PROFILES[*]} " =~ $1 ]]; }
 
 # plex/jellyfin require zurg for the mount
 for media_srv in plex jellyfin; do
